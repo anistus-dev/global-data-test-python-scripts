@@ -119,30 +119,29 @@ def main():
                 for nct_id_column in nct_id_columns:
                     try:
                         records = query_table_by_nct_id(conn, table_name, nct_id, nct_id_column)
+                        total_records += len(records)
                         
+                        table_header = f"\n{'-'*80}\nTABLE: {table_name} (Column: {nct_id_column})\n{'-'*80}\n"
+                        print(table_header, end='')
+                        f.write(table_header)
+                        
+                        record_count = f"Records Found: {len(records)}\n\n"
+                        print(record_count, end='')
+                        f.write(record_count)
+                        
+                        # Get column info
+                        columns = get_table_columns(conn, table_name)
+                        col_header = f"{'Column Name':<40} {'Data Type':<20}\n" + "-" * 60 + "\n"
+                        print(col_header, end='')
+                        f.write(col_header)
+                        
+                        for col_name, data_type in columns:
+                            col_line = f"{col_name:<40} {data_type:<20}\n"
+                            print(col_line, end='')
+                            f.write(col_line)
+                        
+                        # Write data rows
                         if records:
-                            total_records += len(records)
-                            
-                            table_header = f"\n{'-'*80}\nTABLE: {table_name} (Column: {nct_id_column})\n{'-'*80}\n"
-                            print(table_header, end='')
-                            f.write(table_header)
-                            
-                            record_count = f"Records Found: {len(records)}\n\n"
-                            print(record_count, end='')
-                            f.write(record_count)
-                            
-                            # Get column info
-                            columns = get_table_columns(conn, table_name)
-                            col_header = f"{'Column Name':<40} {'Data Type':<20}\n" + "-" * 60 + "\n"
-                            print(col_header, end='')
-                            f.write(col_header)
-                            
-                            for col_name, data_type in columns:
-                                col_line = f"{col_name:<40} {data_type:<20}\n"
-                                print(col_line, end='')
-                                f.write(col_line)
-                            
-                            # Write data rows
                             data_header = f"\n\nDATA:\n"
                             print(data_header, end='')
                             f.write(data_header)
@@ -160,6 +159,10 @@ def main():
                                         row_data = f"  {key}: {value}\n"
                                     print(row_data, end='')
                                     f.write(row_data)
+                        else:
+                            no_data_msg = f"(No data available for this trial)\n"
+                            print(no_data_msg, end='')
+                            f.write(no_data_msg)
                     
                     except Exception as e:
                         conn.rollback()
@@ -167,14 +170,9 @@ def main():
                         print(error_msg, end='')
                         f.write(error_msg)
             
-            if total_records == 0:
-                no_data_msg = f"\n\nNo records found for NCT ID: {nct_id}\n"
-                print(no_data_msg, end='')
-                f.write(no_data_msg)
-            else:
-                footer = f"\n\n{'='*80}\nTotal Records Found: {total_records}\n{'='*80}\n"
-                print(footer, end='')
-                f.write(footer)
+            footer = f"\n\n{'='*80}\nTotal Records Found: {total_records}\n{'='*80}\n"
+            print(footer, end='')
+            f.write(footer)
             
             print(f"\nOutput saved to: {output_file.absolute()}")
         

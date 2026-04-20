@@ -63,6 +63,18 @@ def get_nct_id_columns(conn, table_name):
         return []
 
 
+def get_table_columns(conn, table_name):
+    """Get column names and data types for a table."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT column_name, data_type
+            FROM information_schema.columns 
+            WHERE table_schema = %s AND table_name = %s
+            ORDER BY ordinal_position;
+        """, (SCHEMA, table_name))
+        return cur.fetchall()
+
+
 def query_table_by_nct_id(conn, table_name, nct_id, nct_id_column):
     """Get data from a table for a specific nct_id."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -106,27 +118,33 @@ def main():
                 for nct_id_column in nct_id_columns:
                     try:
                         records = query_table_by_nct_id(conn, table_name, nct_id, nct_id_column)
+                        total_records += len(records)
                         
+                        # Write table name as first row
+                        writer.writerow([table_name])
+                        
+                        # Get column names
+                        columns = get_table_columns(conn, table_name)
+                        column_names = [col[0] for col in columns]
+                        
+                        # Write column names as second row
+                        writer.writerow(column_names)
+                        
+                        # Write data rows
                         if records:
-                            total_records += len(records)
-                            
-                            # Write table name as first row
-                            writer.writerow([table_name])
-                            
-                            # Write column names as second row
-                            column_names = list(records[0].keys())
-                            writer.writerow(column_names)
-                            
-                            # Write data rows
                             for record in records:
                                 row_data = [record.get(col) for col in column_names]
                                 writer.writerow(row_data)
-                            
-                            # Add blank row between tables for readability
-                            writer.writerow([])
-                            
                             status_msg = f"✓ {table_name}: {len(records)} records"
-                            print(status_msg)
+                        else:
+                            # Write empty row to indicate no data
+                            writer.writerow([])
+                            status_msg = f"⊘ {table_name}: (no records)"
+                        
+                        print(status_msg)
+                        
+                        # Add blank row between tables for readability
+                        writer.writerow([])
                     
                     except Exception as e:
                         conn.rollback()
