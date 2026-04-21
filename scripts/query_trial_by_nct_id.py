@@ -9,17 +9,7 @@ from psycopg2.extras import RealDictCursor
 import json
 import sys
 from pathlib import Path
-
-# Database connection parameters
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,
-    'database': 'aact',  # Change to your database name
-    'user': 'postgres',  # Change to your username
-    'password': 'password',  # Change to your password
-}
-
-SCHEMA = 'ctgov'
+from scripts.config import DB_CONFIG, SCHEMA
 
 
 def get_connection():

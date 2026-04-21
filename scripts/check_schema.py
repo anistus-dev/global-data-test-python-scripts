@@ -1,14 +1,5 @@
 import psycopg2
-
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,
-    'database': 'aact',
-    'user': 'postgres',
-    'password': 'password',
-}
-
-SCHEMA = 'ctgov'
+from scripts.config import DB_CONFIG, SCHEMA
 
 try:
     conn = psycopg2.connect(**DB_CONFIG)
