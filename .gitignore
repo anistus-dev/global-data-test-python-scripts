@@ -12,3 +12,6 @@ wheels/
 #output
 output/
 .env
+
+#data
+data/
