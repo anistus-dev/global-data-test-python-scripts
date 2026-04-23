@@ -38,7 +38,11 @@ ISRCTN_DB_PASSWORD=your_password
 ### Step 1: Initialize Database Schema
 Apply the comprehensive SQL schema to your new database:
 ```bash
+# Basic initialization (only creates missing tables)
 uv run python -m scripts.isrctn.init_db
+
+# Clean initialization (wipes current schema and recreates everything - recommended for updates)
+uv run python -m scripts.isrctn.init_db --drop
 ```
 *(Optionally, you can pass a custom schema path: `uv run python -m scripts.isrctn.init_db --schema database/my_schema.sql`)*
 
