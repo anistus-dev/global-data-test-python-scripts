@@ -45,17 +45,31 @@ def fetch_and_store_trial(isrctn_id, conn):
         # 1. Trial Metadata & Titles
         trial_elem = root.find('isr:trial', NS)
         trial_desc = trial_elem.find('isr:trialDescription', NS)
+        trial_design = trial_elem.find('isr:trialDesign', NS)
+        results_elem = trial_elem.find('isr:results', NS)
         
+        # Extract plain text outcomes (fallback)
+        primary_outcome_text = trial_desc.findtext('isr:primaryOutcome', namespaces=NS)
+        secondary_outcome_text = trial_desc.findtext('isr:secondaryOutcome', namespaces=NS)
+        
+        # Trial types can be a list
+        trial_types_list = []
+        tt_elem = trial_design.find('isr:trialTypes', NS) if trial_design is not None else None
+        if tt_elem is not None:
+            trial_types_list = [t.text for t in tt_elem.findall('isr:trialType', NS) if t.text]
+        trial_types_str = ", ".join(trial_types_list) if trial_types_list else trial_design.findtext('isr:trialTypes', namespaces=NS) if trial_design is not None else None
+
         cur.execute("""
             INSERT INTO trials (
                 isrctn_id, last_updated_xml, version_xml, is_visible_to_public,
                 public_id_type, public_id_canonical, public_id_date, isrctn_date_assigned,
                 acknowledgment, title, scientific_title, acronym, study_hypothesis, plain_english_summary,
                 study_design, primary_study_design, secondary_study_design, trial_types, overall_end_date,
-                inclusion_criteria, exclusion_criteria, ethics_approval_required,
-                rect_start_status_override, rect_status_override,
+                inclusion_criteria, exclusion_criteria, ethics_approval_required, ethics_approval_text,
+                primary_outcome_text, secondary_outcome_text,
+                publication_details, publication_stage, basic_report, plain_english_report,
                 ipd_sharing_plan, ipd_sharing_statement, data_policy, raw_xml
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (isrctn_id) DO UPDATE SET
                 last_updated_xml = EXCLUDED.last_updated_xml,
                 version_xml = EXCLUDED.version_xml,
@@ -69,26 +83,31 @@ def fetch_and_store_trial(isrctn_id, conn):
             trial_elem.get('publicIdentifierType'),
             trial_elem.get('publicIdentifierCanonical'),
             parse_date(trial_elem.get('publicIdentifierDateAssigned')),
-            parse_date(root.find('isr:trial/isr:isrctn', NS).get('dateAssigned')) if root.find('isr:trial/isr:isrctn', NS) is not None else None,
+            parse_date(trial_elem.find('isr:isrctn', NS).get('dateAssigned')) if trial_elem.find('isr:isrctn', NS) is not None else None,
             trial_desc.get('thirdPartyFilesAcknowledgement') == 'true',
             trial_desc.findtext('isr:title', namespaces=NS),
             trial_desc.findtext('isr:scientificTitle', namespaces=NS),
             trial_desc.findtext('isr:acronym', namespaces=NS),
             trial_desc.findtext('isr:studyHypothesis', namespaces=NS),
             trial_desc.findtext('isr:plainEnglishSummary', namespaces=NS),
-            trial_elem.find('isr:trialDesign/isr:studyDesign', NS).text if trial_elem.find('isr:trialDesign/isr:studyDesign', NS) is not None else None,
-            trial_elem.findtext('isr:trialDesign/isr:primaryStudyDesign', namespaces=NS),
-            trial_elem.findtext('isr:trialDesign/isr:secondaryStudyDesign', namespaces=NS),
-            trial_elem.findtext('isr:trialDesign/isr:trialTypes', namespaces=NS),
-            parse_date(trial_elem.findtext('isr:trialDesign/isr:overallEndDate', namespaces=NS)),
+            trial_design.findtext('isr:studyDesign', namespaces=NS) if trial_design is not None else None,
+            trial_design.findtext('isr:primaryStudyDesign', namespaces=NS) if trial_design is not None else None,
+            trial_design.findtext('isr:secondaryStudyDesign', namespaces=NS) if trial_design is not None else None,
+            trial_types_str,
+            parse_date(trial_design.findtext('isr:overallEndDate', namespaces=NS)) if trial_design is not None else None,
             trial_elem.findtext('isr:participants/isr:inclusion', namespaces=NS),
             trial_elem.findtext('isr:participants/isr:exclusion', namespaces=NS),
             trial_desc.findtext('isr:ethicsApprovalRequired', namespaces=NS),
-            trial_elem.findtext('isr:participants/isr:recruitmentStartStatusOverride', namespaces=NS),
-            trial_elem.findtext('isr:participants/isr:recruitmentStatusOverride', namespaces=NS),
-            root.find('isr:trial/isr:miscellaneous/isr:ipdSharingPlan', NS).text if root.find('isr:trial/isr:miscellaneous/isr:ipdSharingPlan', NS) is not None else None,
-            root.findtext('isr:trial/isr:results/isr:ipdSharingStatement', namespaces=NS),
-            root.findtext('isr:trial/isr:results/isr:dataPolicies/isr:dataPolicy', namespaces=NS),
+            trial_desc.findtext('isr:ethicsApproval', namespaces=NS),
+            primary_outcome_text,
+            secondary_outcome_text,
+            results_elem.findtext('isr:publicationDetails', namespaces=NS) if results_elem is not None else None,
+            results_elem.findtext('isr:publicationStage', namespaces=NS) if results_elem is not None else None,
+            results_elem.findtext('isr:basicReport', namespaces=NS) if results_elem is not None else None,
+            results_elem.findtext('isr:plainEnglishReport', namespaces=NS) if results_elem is not None else None,
+            trial_elem.findtext('isr:miscellaneous/isr:ipdSharingPlan', namespaces=NS),
+            results_elem.findtext('isr:ipdSharingStatement', namespaces=NS) if results_elem is not None else None,
+            results_elem.findtext('isr:dataPolicies/isr:dataPolicy', namespaces=NS) if results_elem is not None else None,
             xml_data
         ))
 
@@ -121,13 +140,14 @@ def fetch_and_store_trial(isrctn_id, conn):
                 parse_date(parts.findtext('isr:recruitmentEnd', namespaces=NS))
             ))
 
-        # 3. Outcomes
+        # 3. Outcomes (Structured)
         cur.execute("DELETE FROM outcomes WHERE isrctn_id = %s", (isrctn_id,))
         for outcome_group in ['isr:primaryOutcomes', 'isr:secondaryOutcomes']:
             group_type = 'primary' if 'primary' in outcome_group else 'secondary'
-            measures = trial_elem.find(outcome_group, NS)
-            if measures is not None:
-                for m in measures.findall('isr:outcomeMeasure', NS):
+            # Outcomes are inside trialDescription
+            measures_container = trial_desc.find(outcome_group, NS)
+            if measures_container is not None:
+                for m in measures_container.findall('isr:outcomeMeasure', NS):
                     cur.execute("""
                         INSERT INTO outcomes (isrctn_id, measure_id, outcome_type, variable, method, timepoints)
                         VALUES (%s, %s, %s, %s, %s, %s)
@@ -138,7 +158,79 @@ def fetch_and_store_trial(isrctn_id, conn):
                         m.findtext('isr:timepoints', namespaces=NS)
                     ))
 
-        # 4. Ethics Committees
+        # 4. Trial Design (Interventional Details)
+        cur.execute("DELETE FROM interventional_designs WHERE isrctn_id = %s", (isrctn_id,))
+        cur.execute("DELETE FROM trial_purposes WHERE isrctn_id = %s", (isrctn_id,))
+        itd = trial_design.find('isr:interventionalTrialDesign', NS) if trial_design is not None else None
+        if itd is not None:
+            cur.execute("""
+                INSERT INTO interventional_designs (isrctn_id, allocation, masking, control, assignment)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                isrctn_id,
+                itd.findtext('isr:allocation', namespaces=NS),
+                itd.findtext('isr:masking', namespaces=NS),
+                itd.findtext('isr:control', namespaces=NS),
+                itd.findtext('isr:assignment', namespaces=NS)
+            ))
+            
+            purposes = itd.find('isr:purposes', NS)
+            if purposes is not None:
+                for p in purposes.findall('isr:purpose', NS):
+                    cur.execute("INSERT INTO trial_purposes (isrctn_id, purpose) VALUES (%s, %s)", (isrctn_id, p.text))
+
+        # 5. External Identifiers & Secondary Numbers
+        refs = trial_elem.find('isr:externalRefs', NS)
+        if refs is not None:
+            cur.execute("""
+                INSERT INTO external_identifiers (
+                    isrctn_id, doi, eudract_number, iras_number, clinicaltrials_gov_number, protocol_serial_number
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (isrctn_id) DO UPDATE SET
+                    doi = EXCLUDED.doi, clinicaltrials_gov_number = EXCLUDED.clinicaltrials_gov_number
+            """, (
+                isrctn_id,
+                refs.findtext('isr:doi', namespaces=NS),
+                refs.findtext('isr:eudraCTNumber', namespaces=NS),
+                refs.findtext('isr:irasNumber', namespaces=NS),
+                refs.findtext('isr:clinicalTrialsGovNumber', namespaces=NS),
+                refs.findtext('isr:protocolSerialNumber', namespaces=NS)
+            ))
+            
+            cur.execute("DELETE FROM secondary_identifiers WHERE isrctn_id = %s", (isrctn_id,))
+            sec_nums = refs.find('isr:secondaryNumbers', NS)
+            if sec_nums is not None:
+                for sn in sec_nums.findall('isr:secondaryNumber', NS):
+                    cur.execute("""
+                        INSERT INTO secondary_identifiers (isrctn_id, internal_id, number_type, value)
+                        VALUES (%s, %s, %s, %s)
+                    """, (isrctn_id, sn.get('id'), sn.get('numberType'), sn.text))
+
+        # 6. Centres & Countries
+        cur.execute("DELETE FROM recruitment_countries WHERE isrctn_id = %s", (isrctn_id,))
+        countries = parts.find('isr:recruitmentCountries', NS)
+        if countries is not None:
+            for c in countries.findall('isr:country', NS):
+                cur.execute("INSERT INTO recruitment_countries (isrctn_id, country) VALUES (%s, %s)", (isrctn_id, c.text))
+
+        cur.execute("DELETE FROM trial_centres WHERE isrctn_id = %s", (isrctn_id,))
+        centres = parts.find('isr:trialCentres', NS)
+        if centres is not None:
+            for tc in centres.findall('isr:trialCentre', NS):
+                cur.execute("""
+                    INSERT INTO trial_centres (isrctn_id, centre_id, rts_id, name, address, city, state, country, zip)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    isrctn_id, tc.get('id'), tc.findtext('isr:rtsId', namespaces=NS),
+                    tc.findtext('isr:name', namespaces=NS),
+                    tc.findtext('isr:address', namespaces=NS),
+                    tc.findtext('isr:city', namespaces=NS),
+                    tc.findtext('isr:state', namespaces=NS),
+                    tc.findtext('isr:country', namespaces=NS),
+                    tc.findtext('isr:zip', namespaces=NS)
+                ))
+
+        # 7. Ethics Committees
         cur.execute("DELETE FROM ethics_committees WHERE isrctn_id = %s", (isrctn_id,))
         ethics = trial_desc.find('isr:ethicsCommittees', NS)
         if ethics is not None:
@@ -162,51 +254,7 @@ def fetch_and_store_trial(isrctn_id, conn):
                     e.findtext('isr:committeeReference', namespaces=NS)
                 ))
 
-        # 5. External Identifiers
-        refs = trial_elem.find('isr:externalRefs', NS)
-        if refs is not None:
-            cur.execute("""
-                INSERT INTO external_identifiers (
-                    isrctn_id, doi, eudract_number, iras_number, clinicaltrials_gov_number,
-                    protocol_serial_number, secondary_numbers
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (isrctn_id) DO UPDATE SET
-                    doi = EXCLUDED.doi, clinicaltrials_gov_number = EXCLUDED.clinicaltrials_gov_number
-            """, (
-                isrctn_id,
-                refs.findtext('isr:doi', namespaces=NS),
-                refs.findtext('isr:eudraCTNumber', namespaces=NS),
-                refs.findtext('isr:irasNumber', namespaces=NS),
-                refs.findtext('isr:clinicalTrialsGovNumber', namespaces=NS),
-                refs.findtext('isr:protocolSerialNumber', namespaces=NS),
-                refs.findtext('isr:secondaryNumbers', namespaces=NS)
-            ))
-
-        # 6. Centres & Countries
-        cur.execute("DELETE FROM recruitment_countries WHERE isrctn_id = %s", (isrctn_id,))
-        countries = parts.find('isr:recruitmentCountries', NS)
-        if countries is not None:
-            for c in countries.findall('isr:country', NS):
-                cur.execute("INSERT INTO recruitment_countries (isrctn_id, country) VALUES (%s, %s)", (isrctn_id, c.text))
-
-        cur.execute("DELETE FROM trial_centres WHERE isrctn_id = %s", (isrctn_id,))
-        centres = parts.find('isr:trialCentres', NS)
-        if centres is not None:
-            for tc in centres.findall('isr:trialCentre', NS):
-                cur.execute("""
-                    INSERT INTO trial_centres (isrctn_id, centre_id, name, address, city, state, country, zip)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    isrctn_id, tc.get('id'),
-                    tc.findtext('isr:name', namespaces=NS),
-                    tc.findtext('isr:address', namespaces=NS),
-                    tc.findtext('isr:city', namespaces=NS),
-                    tc.findtext('isr:state', namespaces=NS),
-                    tc.findtext('isr:country', namespaces=NS),
-                    tc.findtext('isr:zip', namespaces=NS)
-                ))
-
-        # 7. Medical Info
+        # 8. Medical Info
         cur.execute("DELETE FROM conditions WHERE isrctn_id = %s", (isrctn_id,))
         conds = trial_elem.find('isr:conditions', NS)
         if conds is not None:
@@ -221,7 +269,52 @@ def fetch_and_store_trial(isrctn_id, conn):
                 cur.execute("INSERT INTO interventions (isrctn_id, description, intervention_type, phase, drug_names) VALUES (%s, %s, %s, %s, %s)",
                     (isrctn_id, i.findtext('isr:description', namespaces=NS), i.findtext('isr:interventionType', namespaces=NS), i.findtext('isr:phase', namespaces=NS), i.findtext('isr:drugNames', namespaces=NS)))
 
-        # 8. Organizations
+        # 9. Outputs & Attached Files
+        cur.execute("DELETE FROM data_outputs WHERE isrctn_id = %s", (isrctn_id,))
+        outputs = trial_elem.find('isr:outputs', NS)
+        if outputs is not None:
+            for o in outputs.findall('isr:output', NS):
+                lf = o.find('isr:localFile', NS)
+                ext = o.find('isr:externalLink', NS)
+                cur.execute("""
+                    INSERT INTO data_outputs (
+                        isrctn_id, output_xml_id, output_type, artefact_type, date_created, date_uploaded,
+                        peer_reviewed, patient_facing, created_by, file_id, original_filename,
+                        download_filename, mime_type, file_length, md5sum, description, production_notes, external_url
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    isrctn_id, o.get('id'), o.get('outputType'), o.get('artefactType'),
+                    parse_date(o.get('dateCreated')), parse_date(o.get('dateUploaded')),
+                    o.get('peerReviewed') == 'true', o.get('patientFacing') == 'true', o.get('createdBy'),
+                    lf.get('fileId') if lf is not None else None,
+                    lf.get('originalFilename') if lf is not None else None,
+                    lf.get('downloadFilename') if lf is not None else None,
+                    lf.get('mimeType') if lf is not None else None,
+                    int(lf.get('length')) if lf is not None and lf.get('length') else None,
+                    lf.get('md5sum') if lf is not None else None,
+                    o.findtext('isr:description', namespaces=NS),
+                    o.findtext('isr:productionNotes', namespaces=NS),
+                    ext.get('url') if ext is not None else None
+                ))
+
+        cur.execute("DELETE FROM attached_files WHERE isrctn_id = %s", (isrctn_id,))
+        attached = trial_elem.find('isr:attachedFiles', NS)
+        if attached is not None:
+            for af in attached.findall('isr:attachedFile', NS):
+                cur.execute("""
+                    INSERT INTO attached_files (
+                        isrctn_id, file_id, name, description, download_url, is_public, mime_type, file_length, md5sum
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    isrctn_id, af.findtext('isr:id', namespaces=NS), af.findtext('isr:name', namespaces=NS),
+                    af.findtext('isr:description', namespaces=NS), af.get('downloadUrl'),
+                    af.findtext('isr:public', namespaces=NS) == 'true',
+                    af.findtext('isr:mimeType', namespaces=NS),
+                    int(af.findtext('isr:length', namespaces=NS)) if af.findtext('isr:length', namespaces=NS) else None,
+                    af.findtext('isr:md5sum', namespaces=NS)
+                ))
+
+        # 10. Organizations
         cur.execute("DELETE FROM organizations WHERE isrctn_id = %s", (isrctn_id,))
         for org in root.findall('isr:sponsor', NS) + root.findall('isr:funder', NS):
             role = 'SPONSOR' if 'sponsor' in org.tag else 'FUNDER'
@@ -237,7 +330,7 @@ def fetch_and_store_trial(isrctn_id, conn):
                 org.findtext('isr:fundRef', namespaces=NS)
             ))
 
-        # 9. Contacts
+        # 11. Contacts
         cur.execute("DELETE FROM contacts WHERE isrctn_id = %s", (isrctn_id,))
         for c in root.findall('isr:contact', NS):
             cd = c.find('isr:contactDetails', NS)
@@ -271,6 +364,8 @@ def fetch_and_store_trial(isrctn_id, conn):
         return True, None
     except Exception as e:
         conn.rollback()
+        import traceback
+        traceback.print_exc()
         print(f"Error processing data for {isrctn_id}: {e}")
         return False, str(e)
     finally:
@@ -286,8 +381,12 @@ def main():
         trials_to_fetch = [row[0] for row in cur.fetchall()]
         
         if not trials_to_fetch:
-            print("No pending trials in queue.")
-            return
+            # Optionally check for 'failed' trials to retry
+            cur.execute("SELECT isrctn_id FROM trial_queue WHERE retrieval_status = 'failed'")
+            trials_to_fetch = [row[0] for row in cur.fetchall()]
+            if not trials_to_fetch:
+                print("No trials in queue to process.")
+                return
 
         print(f"Starting retrieval of {len(trials_to_fetch)} trials...")
         

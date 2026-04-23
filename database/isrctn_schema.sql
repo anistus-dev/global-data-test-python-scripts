@@ -41,12 +41,19 @@ CREATE TABLE IF NOT EXISTS trials (
     -- Selection Criteria
     inclusion_criteria TEXT,
     exclusion_criteria TEXT,
-    ethics_approval_required VARCHAR(50),
+    ethics_approval_required VARCHAR(100),
+    ethics_approval_text TEXT, -- For old format ethics approval
     
-    -- Overrides & Metadata
-    rect_start_status_override TEXT,
-    rect_status_override TEXT,
-    ipd_sharing_plan VARCHAR(50),
+    -- Outcomes (Text Fallback)
+    primary_outcome_text TEXT,
+    secondary_outcome_text TEXT,
+    
+    -- Results & Metadata
+    publication_details TEXT,
+    publication_stage VARCHAR(100),
+    basic_report TEXT,
+    plain_english_report TEXT,
+    ipd_sharing_plan VARCHAR(100),
     ipd_sharing_statement TEXT,
     data_policy TEXT,
     
@@ -78,8 +85,15 @@ CREATE TABLE IF NOT EXISTS external_identifiers (
     eudract_number VARCHAR(255),
     iras_number VARCHAR(255),
     clinicaltrials_gov_number VARCHAR(255),
-    protocol_serial_number VARCHAR(255),
-    secondary_numbers TEXT 
+    protocol_serial_number VARCHAR(255)
+);
+
+CREATE TABLE IF NOT EXISTS secondary_identifiers (
+    id SERIAL PRIMARY KEY,
+    isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
+    internal_id UUID, -- 'id' attribute from XML
+    number_type VARCHAR(100),
+    value TEXT
 );
 
 -- 5. Outcome Measures
@@ -116,6 +130,7 @@ CREATE TABLE IF NOT EXISTS trial_centres (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     centre_id UUID, -- From XML attribute 'id'
+    rts_id VARCHAR(255),
     name TEXT,
     address TEXT,
     city VARCHAR(255),
@@ -149,7 +164,58 @@ CREATE TABLE IF NOT EXISTS interventions (
     drug_names TEXT
 );
 
--- 10. Organizations (Sponsors & Funders)
+-- 10. Design Details
+CREATE TABLE IF NOT EXISTS interventional_designs (
+    isrctn_id VARCHAR(50) PRIMARY KEY REFERENCES trials(isrctn_id) ON DELETE CASCADE,
+    allocation VARCHAR(100),
+    masking VARCHAR(100),
+    control VARCHAR(100),
+    assignment VARCHAR(100)
+);
+
+CREATE TABLE IF NOT EXISTS trial_purposes (
+    id SERIAL PRIMARY KEY,
+    isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
+    purpose TEXT
+);
+
+-- 11. Data Outputs & Files
+CREATE TABLE IF NOT EXISTS data_outputs (
+    id SERIAL PRIMARY KEY,
+    isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
+    output_xml_id UUID,
+    output_type VARCHAR(100),
+    artefact_type VARCHAR(100),
+    date_created TIMESTAMP WITH TIME ZONE,
+    date_uploaded TIMESTAMP WITH TIME ZONE,
+    peer_reviewed BOOLEAN,
+    patient_facing BOOLEAN,
+    created_by TEXT,
+    file_id UUID,
+    original_filename TEXT,
+    download_filename TEXT,
+    mime_type VARCHAR(100),
+    file_length BIGINT,
+    md5sum VARCHAR(50),
+    description TEXT,
+    production_notes TEXT,
+    external_url TEXT -- for ExternalLink artefactType
+);
+
+CREATE TABLE IF NOT EXISTS attached_files (
+    id SERIAL PRIMARY KEY,
+    isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
+    file_id UUID,
+    name TEXT,
+    description TEXT,
+    download_url TEXT,
+    is_public BOOLEAN,
+    mime_type VARCHAR(100),
+    file_length BIGINT,
+    md5sum VARCHAR(50)
+);
+
+-- 12. Organizations (Sponsors & Funders)
 CREATE TABLE IF NOT EXISTS organizations (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
@@ -162,7 +228,7 @@ CREATE TABLE IF NOT EXISTS organizations (
     fund_ref TEXT
 );
 
--- 11. Contacts
+-- 13. Contacts
 CREATE TABLE IF NOT EXISTS contacts (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
@@ -181,7 +247,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     privacy VARCHAR(50)
 );
 
--- 12. Contact Roles/Types
+-- 14. Contact Roles/Types
 CREATE TABLE IF NOT EXISTS contact_types (
     id SERIAL PRIMARY KEY,
     contact_record_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
