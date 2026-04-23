@@ -37,12 +37,18 @@ CREATE TABLE IF NOT EXISTS trials (
     secondary_study_design TEXT,
     trial_types TEXT,
     overall_end_date DATE,
+    overall_status_override VARCHAR(100), -- New from Master XML
+    reason_abandoned TEXT, -- New from Master XML
     
     -- Selection Criteria
     inclusion_criteria TEXT,
     exclusion_criteria TEXT,
     ethics_approval_required VARCHAR(100),
-    ethics_approval_text TEXT, -- For old format ethics approval
+    ethics_approval_text TEXT, 
+    
+    -- Status Overrides (from participants section)
+    rect_start_status_override VARCHAR(100),
+    rect_status_override VARCHAR(100),
     
     -- Outcomes (Text Fallback)
     primary_outcome_text TEXT,
@@ -78,6 +84,12 @@ CREATE TABLE IF NOT EXISTS participant_details (
     recruitment_end DATE
 );
 
+CREATE TABLE IF NOT EXISTS participant_types (
+    id SERIAL PRIMARY KEY,
+    isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
+    participant_type VARCHAR(255)
+);
+
 -- 4. External Identifiers
 CREATE TABLE IF NOT EXISTS external_identifiers (
     isrctn_id VARCHAR(50) PRIMARY KEY REFERENCES trials(isrctn_id) ON DELETE CASCADE,
@@ -93,6 +105,7 @@ CREATE TABLE IF NOT EXISTS secondary_identifiers (
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     internal_id UUID, -- 'id' attribute from XML
     number_type VARCHAR(100),
+    canonical_number VARCHAR(255),
     value TEXT
 );
 
@@ -192,6 +205,7 @@ CREATE TABLE IF NOT EXISTS data_outputs (
     patient_facing BOOLEAN,
     created_by TEXT,
     file_id UUID,
+    file_version VARCHAR(50),
     original_filename TEXT,
     download_filename TEXT,
     mime_type VARCHAR(100),
@@ -199,7 +213,7 @@ CREATE TABLE IF NOT EXISTS data_outputs (
     md5sum VARCHAR(50),
     description TEXT,
     production_notes TEXT,
-    external_url TEXT -- for ExternalLink artefactType
+    external_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS attached_files (

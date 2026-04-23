@@ -2,6 +2,7 @@ import sys
 import requests
 import xml.etree.ElementTree as ET
 import psycopg2
+import traceback
 from datetime import datetime
 from scripts.config import ISRCTN_DB_CONFIG
 
@@ -42,22 +43,22 @@ def fetch_and_store_trial(isrctn_id, conn):
 
     cur = conn.cursor()
     try:
-        # 1. Trial Metadata & Titles
+        # 1. Trial Elements
         trial_elem = root.find('isr:trial', NS)
         trial_desc = trial_elem.find('isr:trialDescription', NS)
         trial_design = trial_elem.find('isr:trialDesign', NS)
         results_elem = trial_elem.find('isr:results', NS)
+        participants = trial_elem.find('isr:participants', NS)
         
-        # Extract plain text outcomes (fallback)
-        primary_outcome_text = trial_desc.findtext('isr:primaryOutcome', namespaces=NS)
-        secondary_outcome_text = trial_desc.findtext('isr:secondaryOutcome', namespaces=NS)
-        
-        # Trial types can be a list
+        # Trial types can be a list or a tag
         trial_types_list = []
-        tt_elem = trial_design.find('isr:trialTypes', NS) if trial_design is not None else None
-        if tt_elem is not None:
-            trial_types_list = [t.text for t in tt_elem.findall('isr:trialType', NS) if t.text]
-        trial_types_str = ", ".join(trial_types_list) if trial_types_list else trial_design.findtext('isr:trialTypes', namespaces=NS) if trial_design is not None else None
+        if trial_design is not None:
+            tt_elem = trial_design.find('isr:trialTypes', NS)
+            if tt_elem is not None:
+                trial_types_list = [t.text for t in tt_elem.findall('isr:trialType', NS) if t.text]
+            if not trial_types_list and trial_design.findtext('isr:trialTypes', namespaces=NS):
+                trial_types_list = [trial_design.findtext('isr:trialTypes', namespaces=NS)]
+        trial_types_str = ", ".join(trial_types_list) if trial_types_list else None
 
         cur.execute("""
             INSERT INTO trials (
@@ -65,11 +66,17 @@ def fetch_and_store_trial(isrctn_id, conn):
                 public_id_type, public_id_canonical, public_id_date, isrctn_date_assigned,
                 acknowledgment, title, scientific_title, acronym, study_hypothesis, plain_english_summary,
                 study_design, primary_study_design, secondary_study_design, trial_types, overall_end_date,
+                overall_status_override, reason_abandoned,
                 inclusion_criteria, exclusion_criteria, ethics_approval_required, ethics_approval_text,
+                rect_start_status_override, rect_status_override,
                 primary_outcome_text, secondary_outcome_text,
                 publication_details, publication_stage, basic_report, plain_english_report,
                 ipd_sharing_plan, ipd_sharing_statement, data_policy, raw_xml
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
             ON CONFLICT (isrctn_id) DO UPDATE SET
                 last_updated_xml = EXCLUDED.last_updated_xml,
                 version_xml = EXCLUDED.version_xml,
@@ -95,12 +102,16 @@ def fetch_and_store_trial(isrctn_id, conn):
             trial_design.findtext('isr:secondaryStudyDesign', namespaces=NS) if trial_design is not None else None,
             trial_types_str,
             parse_date(trial_design.findtext('isr:overallEndDate', namespaces=NS)) if trial_design is not None else None,
-            trial_elem.findtext('isr:participants/isr:inclusion', namespaces=NS),
-            trial_elem.findtext('isr:participants/isr:exclusion', namespaces=NS),
+            trial_design.findtext('isr:overallStatusOverride', namespaces=NS) if trial_design is not None else None,
+            trial_design.findtext('isr:reasonAbandoned', namespaces=NS) if trial_design is not None else None,
+            participants.findtext('isr:inclusion', namespaces=NS) if participants is not None else None,
+            participants.findtext('isr:exclusion', namespaces=NS) if participants is not None else None,
             trial_desc.findtext('isr:ethicsApprovalRequired', namespaces=NS),
             trial_desc.findtext('isr:ethicsApproval', namespaces=NS),
-            primary_outcome_text,
-            secondary_outcome_text,
+            participants.findtext('isr:recruitmentStartStatusOverride', namespaces=NS) if participants is not None else None,
+            participants.findtext('isr:recruitmentStatusOverride', namespaces=NS) if participants is not None else None,
+            trial_desc.findtext('isr:primaryOutcome', namespaces=NS),
+            trial_desc.findtext('isr:secondaryOutcome', namespaces=NS),
             results_elem.findtext('isr:publicationDetails', namespaces=NS) if results_elem is not None else None,
             results_elem.findtext('isr:publicationStage', namespaces=NS) if results_elem is not None else None,
             results_elem.findtext('isr:basicReport', namespaces=NS) if results_elem is not None else None,
@@ -112,10 +123,9 @@ def fetch_and_store_trial(isrctn_id, conn):
         ))
 
         # 2. Participant details
-        parts = trial_elem.find('isr:participants', NS)
-        if parts is not None:
-            lower_age = parts.find('isr:lowerAgeLimit', NS)
-            upper_age = parts.find('isr:upperAgeLimit', NS)
+        if participants is not None:
+            lower_age = participants.find('isr:lowerAgeLimit', NS)
+            upper_age = participants.find('isr:upperAgeLimit', NS)
             cur.execute("""
                 INSERT INTO participant_details (
                     isrctn_id, age_range, lower_age_limit_value, lower_age_limit_unit,
@@ -127,24 +137,30 @@ def fetch_and_store_trial(isrctn_id, conn):
                     age_range = EXCLUDED.age_range, gender = EXCLUDED.gender
             """, (
                 isrctn_id,
-                parts.findtext('isr:ageRange', namespaces=NS),
+                participants.findtext('isr:ageRange', namespaces=NS),
                 lower_age.get('value') if lower_age is not None else None,
                 lower_age.get('unit') if lower_age is not None else None,
                 upper_age.get('value') if upper_age is not None else None,
                 upper_age.get('unit') if upper_age is not None else None,
-                parts.findtext('isr:gender', namespaces=NS),
-                parts.findtext('isr:healthyVolunteersAllowed', namespaces=NS) == 'true',
-                parts.findtext('isr:targetEnrolment', namespaces=NS),
-                parts.findtext('isr:totalFinalEnrolment', namespaces=NS),
-                parse_date(parts.findtext('isr:recruitmentStart', namespaces=NS)),
-                parse_date(parts.findtext('isr:recruitmentEnd', namespaces=NS))
+                participants.findtext('isr:gender', namespaces=NS),
+                participants.findtext('isr:healthyVolunteersAllowed', namespaces=NS) == 'true',
+                participants.findtext('isr:targetEnrolment', namespaces=NS),
+                participants.findtext('isr:totalFinalEnrolment', namespaces=NS),
+                parse_date(participants.findtext('isr:recruitmentStart', namespaces=NS)),
+                parse_date(participants.findtext('isr:recruitmentEnd', namespaces=NS))
             ))
+            
+            # Participant Types List
+            cur.execute("DELETE FROM participant_types WHERE isrctn_id = %s", (isrctn_id,))
+            pt_container = participants.find('isr:participantTypes', NS)
+            if pt_container is not None:
+                for pt in pt_container.findall('isr:participantType', NS):
+                    cur.execute("INSERT INTO participant_types (isrctn_id, participant_type) VALUES (%s, %s)", (isrctn_id, pt.text))
 
         # 3. Outcomes (Structured)
         cur.execute("DELETE FROM outcomes WHERE isrctn_id = %s", (isrctn_id,))
         for outcome_group in ['isr:primaryOutcomes', 'isr:secondaryOutcomes']:
             group_type = 'primary' if 'primary' in outcome_group else 'secondary'
-            # Outcomes are inside trialDescription
             measures_container = trial_desc.find(outcome_group, NS)
             if measures_container is not None:
                 for m in measures_container.findall('isr:outcomeMeasure', NS):
@@ -173,7 +189,6 @@ def fetch_and_store_trial(isrctn_id, conn):
                 itd.findtext('isr:control', namespaces=NS),
                 itd.findtext('isr:assignment', namespaces=NS)
             ))
-            
             purposes = itd.find('isr:purposes', NS)
             if purposes is not None:
                 for p in purposes.findall('isr:purpose', NS):
@@ -202,33 +217,34 @@ def fetch_and_store_trial(isrctn_id, conn):
             if sec_nums is not None:
                 for sn in sec_nums.findall('isr:secondaryNumber', NS):
                     cur.execute("""
-                        INSERT INTO secondary_identifiers (isrctn_id, internal_id, number_type, value)
-                        VALUES (%s, %s, %s, %s)
-                    """, (isrctn_id, sn.get('id'), sn.get('numberType'), sn.text))
+                        INSERT INTO secondary_identifiers (isrctn_id, internal_id, number_type, canonical_number, value)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (isrctn_id, sn.get('id'), sn.get('numberType'), sn.get('canonicalSecondaryNumber'), sn.text))
 
         # 6. Centres & Countries
-        cur.execute("DELETE FROM recruitment_countries WHERE isrctn_id = %s", (isrctn_id,))
-        countries = parts.find('isr:recruitmentCountries', NS)
-        if countries is not None:
-            for c in countries.findall('isr:country', NS):
-                cur.execute("INSERT INTO recruitment_countries (isrctn_id, country) VALUES (%s, %s)", (isrctn_id, c.text))
+        if participants is not None:
+            cur.execute("DELETE FROM recruitment_countries WHERE isrctn_id = %s", (isrctn_id,))
+            countries = participants.find('isr:recruitmentCountries', NS)
+            if countries is not None:
+                for c in countries.findall('isr:country', NS):
+                    cur.execute("INSERT INTO recruitment_countries (isrctn_id, country) VALUES (%s, %s)", (isrctn_id, c.text))
 
-        cur.execute("DELETE FROM trial_centres WHERE isrctn_id = %s", (isrctn_id,))
-        centres = parts.find('isr:trialCentres', NS)
-        if centres is not None:
-            for tc in centres.findall('isr:trialCentre', NS):
-                cur.execute("""
-                    INSERT INTO trial_centres (isrctn_id, centre_id, rts_id, name, address, city, state, country, zip)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    isrctn_id, tc.get('id'), tc.findtext('isr:rtsId', namespaces=NS),
-                    tc.findtext('isr:name', namespaces=NS),
-                    tc.findtext('isr:address', namespaces=NS),
-                    tc.findtext('isr:city', namespaces=NS),
-                    tc.findtext('isr:state', namespaces=NS),
-                    tc.findtext('isr:country', namespaces=NS),
-                    tc.findtext('isr:zip', namespaces=NS)
-                ))
+            cur.execute("DELETE FROM trial_centres WHERE isrctn_id = %s", (isrctn_id,))
+            centres = participants.find('isr:trialCentres', NS)
+            if centres is not None:
+                for tc in centres.findall('isr:trialCentre', NS):
+                    cur.execute("""
+                        INSERT INTO trial_centres (isrctn_id, centre_id, rts_id, name, address, city, state, country, zip)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        isrctn_id, tc.get('id'), tc.findtext('isr:rtsId', namespaces=NS),
+                        tc.findtext('isr:name', namespaces=NS),
+                        tc.findtext('isr:address', namespaces=NS),
+                        tc.findtext('isr:city', namespaces=NS),
+                        tc.findtext('isr:state', namespaces=NS),
+                        tc.findtext('isr:country', namespaces=NS),
+                        tc.findtext('isr:zip', namespaces=NS)
+                    ))
 
         # 7. Ethics Committees
         cur.execute("DELETE FROM ethics_committees WHERE isrctn_id = %s", (isrctn_id,))
@@ -266,8 +282,10 @@ def fetch_and_store_trial(isrctn_id, conn):
         inters = trial_elem.find('isr:interventions', NS)
         if inters is not None:
             for i in inters.findall('isr:intervention', NS):
+                dnames_list = [d.text for d in i.findall('isr:drugNames/isr:drugName', NS) if d.text]
+                dnames_str = ", ".join(dnames_list) if dnames_list else i.findtext('isr:drugNames', namespaces=NS)
                 cur.execute("INSERT INTO interventions (isrctn_id, description, intervention_type, phase, drug_names) VALUES (%s, %s, %s, %s, %s)",
-                    (isrctn_id, i.findtext('isr:description', namespaces=NS), i.findtext('isr:interventionType', namespaces=NS), i.findtext('isr:phase', namespaces=NS), i.findtext('isr:drugNames', namespaces=NS)))
+                    (isrctn_id, i.findtext('isr:description', namespaces=NS), i.findtext('isr:interventionType', namespaces=NS), i.findtext('isr:phase', namespaces=NS), dnames_str))
 
         # 9. Outputs & Attached Files
         cur.execute("DELETE FROM data_outputs WHERE isrctn_id = %s", (isrctn_id,))
@@ -279,14 +297,15 @@ def fetch_and_store_trial(isrctn_id, conn):
                 cur.execute("""
                     INSERT INTO data_outputs (
                         isrctn_id, output_xml_id, output_type, artefact_type, date_created, date_uploaded,
-                        peer_reviewed, patient_facing, created_by, file_id, original_filename,
+                        peer_reviewed, patient_facing, created_by, file_id, file_version, original_filename,
                         download_filename, mime_type, file_length, md5sum, description, production_notes, external_url
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     isrctn_id, o.get('id'), o.get('outputType'), o.get('artefactType'),
                     parse_date(o.get('dateCreated')), parse_date(o.get('dateUploaded')),
                     o.get('peerReviewed') == 'true', o.get('patientFacing') == 'true', o.get('createdBy'),
                     lf.get('fileId') if lf is not None else None,
+                    lf.get('version') if lf is not None else None,
                     lf.get('originalFilename') if lf is not None else None,
                     lf.get('downloadFilename') if lf is not None else None,
                     lf.get('mimeType') if lf is not None else None,
@@ -354,7 +373,6 @@ def fetch_and_store_trial(isrctn_id, conn):
                 c.findtext('isr:privacy', namespaces=NS)
             ))
             contact_record_id = cur.fetchone()[0]
-            
             ctypes = c.find('isr:contactTypes', NS)
             if ctypes is not None:
                 for ct in ctypes.findall('isr:contactType', NS):
@@ -364,7 +382,6 @@ def fetch_and_store_trial(isrctn_id, conn):
         return True, None
     except Exception as e:
         conn.rollback()
-        import traceback
         traceback.print_exc()
         print(f"Error processing data for {isrctn_id}: {e}")
         return False, str(e)
@@ -374,26 +391,18 @@ def fetch_and_store_trial(isrctn_id, conn):
 def main():
     conn = get_db_connection()
     cur = conn.cursor()
-    
     try:
-        # Get pending trials
         cur.execute("SELECT isrctn_id FROM trial_queue WHERE retrieval_status = 'pending'")
         trials_to_fetch = [row[0] for row in cur.fetchall()]
-        
         if not trials_to_fetch:
-            # Optionally check for 'failed' trials to retry
             cur.execute("SELECT isrctn_id FROM trial_queue WHERE retrieval_status = 'failed'")
             trials_to_fetch = [row[0] for row in cur.fetchall()]
             if not trials_to_fetch:
                 print("No trials in queue to process.")
                 return
-
         print(f"Starting retrieval of {len(trials_to_fetch)} trials...")
-        
         for isrctn_id in trials_to_fetch:
             success, error_msg = fetch_and_store_trial(isrctn_id, conn)
-            
-            # Update queue status
             status = 'completed' if success else 'failed'
             cur.execute("""
                 UPDATE trial_queue 
