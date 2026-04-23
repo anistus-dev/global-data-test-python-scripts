@@ -69,3 +69,29 @@ You can check the status of your ingestion by querying the `trial_queue` table:
 ```sql
 SELECT retrieval_status, COUNT(*) FROM trial_queue GROUP BY retrieval_status;
 ```
+
+## 5. Support Tools
+
+### Schema Discovery Tool
+If you suspect the XML structure has changed or contains rare fields not yet in the database, use the discovery tool to map out the entire tree structure from a sample of IDs:
+
+```bash
+uv run python -m scripts.isrctn.support.discover_schema path/to/your/ids.csv --limit 100
+```
+This will generate a `schema_discovery_results.json` file containing all unique tag paths and attributes found in the sample.
+
+### Sample Schema Generator
+To see not just the structure but also **what the data actually looks like** inside those tags, use the sample generator:
+
+```bash
+uv run python -m scripts.isrctn.support.generate_sample_schema path/to/your/ids.csv --limit 10
+```
+This builds a hierarchical JSON representation of the entire XML tree, including element counts and up to 3 real-world sample values for every single field found.
+
+### Master XML Template Generator
+If you want to see a single, massive XML file that contains every possible field discovered during sampling (a "union" of all fields), use this tool:
+
+```bash
+uv run python -m scripts.isrctn.support.generate_master_xml path/to/your/ids.csv --limit 50
+```
+The resulting `isrctn_master_template.xml` is a perfect visual reference for building database schemas or mapping logic.
