@@ -28,6 +28,28 @@ def parse_date(date_str):
     except:
         return None
 
+def safe_int(val):
+    if val is None:
+        return None
+    try:
+        s = str(val).strip()
+        if not s:
+            return None
+        return int(float(s)) # Handle case where it might be '80.0'
+    except:
+        return None
+
+def safe_float(val):
+    if val is None:
+        return None
+    try:
+        s = str(val).strip()
+        if not s:
+            return None
+        return float(s)
+    except:
+        return None
+
 def fetch_and_store_trial(isrctn_id, conn):
     url = f"https://www.isrctn.com/api/trial/{isrctn_id}/format/default"
     print(f"Fetching {isrctn_id}...")
@@ -85,7 +107,7 @@ def fetch_and_store_trial(isrctn_id, conn):
         """, (
             isrctn_id,
             trial_elem.get('lastUpdated'),
-            trial_elem.get('version'),
+            safe_int(trial_elem.get('version')),
             trial_elem.get('isVisibleToPublic') == 'true',
             trial_elem.get('publicIdentifierType'),
             trial_elem.get('publicIdentifierCanonical'),
@@ -138,14 +160,14 @@ def fetch_and_store_trial(isrctn_id, conn):
             """, (
                 isrctn_id,
                 participants.findtext('isr:ageRange', namespaces=NS),
-                lower_age.get('value') if lower_age is not None else None,
+                safe_float(lower_age.get('value')) if lower_age is not None else None,
                 lower_age.get('unit') if lower_age is not None else None,
-                upper_age.get('value') if upper_age is not None else None,
+                safe_float(upper_age.get('value')) if upper_age is not None else None,
                 upper_age.get('unit') if upper_age is not None else None,
                 participants.findtext('isr:gender', namespaces=NS),
                 participants.findtext('isr:healthyVolunteersAllowed', namespaces=NS) == 'true',
-                participants.findtext('isr:targetEnrolment', namespaces=NS),
-                participants.findtext('isr:totalFinalEnrolment', namespaces=NS),
+                safe_int(participants.findtext('isr:targetEnrolment', namespaces=NS)),
+                safe_int(participants.findtext('isr:totalFinalEnrolment', namespaces=NS)),
                 parse_date(participants.findtext('isr:recruitmentStart', namespaces=NS)),
                 parse_date(participants.findtext('isr:recruitmentEnd', namespaces=NS))
             ))
@@ -309,7 +331,7 @@ def fetch_and_store_trial(isrctn_id, conn):
                     lf.get('originalFilename') if lf is not None else None,
                     lf.get('downloadFilename') if lf is not None else None,
                     lf.get('mimeType') if lf is not None else None,
-                    int(lf.get('length')) if lf is not None and lf.get('length') else None,
+                    safe_int(lf.get('length')) if lf is not None else None,
                     lf.get('md5sum') if lf is not None else None,
                     o.findtext('isr:description', namespaces=NS),
                     o.findtext('isr:productionNotes', namespaces=NS),
@@ -329,7 +351,7 @@ def fetch_and_store_trial(isrctn_id, conn):
                     af.findtext('isr:description', namespaces=NS), af.get('downloadUrl'),
                     af.findtext('isr:public', namespaces=NS) == 'true',
                     af.findtext('isr:mimeType', namespaces=NS),
-                    int(af.findtext('isr:length', namespaces=NS)) if af.findtext('isr:length', namespaces=NS) else None,
+                    safe_int(af.findtext('isr:length', namespaces=NS)),
                     af.findtext('isr:md5sum', namespaces=NS)
                 ))
 
@@ -412,9 +434,7 @@ def main():
                 WHERE isrctn_id = %s
             """, (status, error_msg, isrctn_id))
             conn.commit()
-            
         print("Batch processing complete.")
-        
     finally:
         cur.close()
         conn.close()
