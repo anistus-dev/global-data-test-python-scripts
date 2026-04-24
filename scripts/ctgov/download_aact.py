@@ -2,20 +2,23 @@ import os
 import sys
 import requests
 import argparse
+import zipfile
+import shutil
 from datetime import datetime
 
 def download_aact(target_date=None, output_dir="data/aact_dumps"):
     """
-    Download the AACT daily static database copy for a specific date.
+    Download and extract the AACT daily static database copy for a specific date.
     """
     if target_date is None:
         target_date = datetime.now().strftime("%Y-%m-%d")
 
-    # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
+    # Create a dated subfolder for this specific dump
+    dated_dir = os.path.join(output_dir, target_date)
+    os.makedirs(dated_dir, exist_ok=True)
     
-    filename = f"aact_dump_{target_date}.zip"
-    output_path = os.path.join(output_dir, filename)
+    zip_filename = f"aact_dump_{target_date}.zip"
+    zip_path = os.path.join(dated_dir, zip_filename)
     
     # AACT Daily Dump URL pattern
     url = f"https://aact.ctti-clinicaltrials.org/static/static_db_copies/daily/{target_date}?source=web"
@@ -28,7 +31,7 @@ def download_aact(target_date=None, output_dir="data/aact_dumps"):
     print(f"URL: {url}")
     
     try:
-        # Stream the download to handle large files
+        # 1. Download the ZIP file
         response = requests.get(url, headers=headers, stream=True, timeout=60)
         
         # Check if the file actually exists (AACT often redirects to a 404 page if date is invalid)
@@ -40,14 +43,14 @@ def download_aact(target_date=None, output_dir="data/aact_dumps"):
         total_size = int(response.headers.get('content-length', 0))
         block_size = 1024 * 1024 # 1MB
         
-        print(f"Saving to: {output_path}")
+        print(f"Downloading to: {zip_path}")
         if total_size > 0:
             print(f"Total size: {total_size / (1024*1024):.2f} MB")
         else:
             print("Total size: Unknown (Streaming...)")
 
         downloaded = 0
-        with open(output_path, 'wb') as f:
+        with open(zip_path, 'wb') as f:
             for data in response.iter_content(block_size):
                 f.write(data)
                 downloaded += len(data)
@@ -60,18 +63,58 @@ def download_aact(target_date=None, output_dir="data/aact_dumps"):
                     sys.stdout.write(f"\rDownloaded: {downloaded / (1024*1024):.1f} MB...")
                 sys.stdout.flush()
 
-        print("\n\nDownload complete!")
-        return True
+        print("\nDownload complete!")
 
-    except requests.exceptions.RequestException as e:
-        print(f"\nConnection error occurred: {e}")
+        # 2. Extract the ZIP file
+        print(f"Extracting files into {dated_dir}...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(dated_dir)
+        
+        # 3. Cleanup: Find the .dmp file and remove everything else
+        print("Cleaning up temporary files...")
+        dmp_file = None
+        
+        # Walk through the extracted files
+        for root, dirs, files in os.walk(dated_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file.endswith('.dmp'):
+                    # If the dmp is in a subdirectory, move it to the dated_dir root
+                    target_path = os.path.join(dated_dir, file)
+                    if file_path != target_path:
+                        shutil.move(file_path, target_path)
+                    dmp_file = target_path
+                elif file == zip_filename:
+                    # Keep the zip for a moment, delete later
+                    pass
+                else:
+                    # Delete non-dmp files (READMEs, etc.)
+                    os.remove(file_path)
+
+        # Remove the original ZIP file
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+        # Final check
+        if dmp_file:
+            print(f"\nSuccess! Dump is ready at: {dmp_file}")
+            print(f"You can now run: uv run python -m scripts.ctgov.init_db {dmp_file}")
+            return True
+        else:
+            print("\nWarning: No .dmp file was found inside the downloaded ZIP.")
+            return False
+
+    except zipfile.BadZipFile:
+        print("\nError: The downloaded file is not a valid ZIP file. AACT might have returned a 404 page.")
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
         return False
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
+        print(f"\nAn error occurred: {e}")
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description="Download AACT daily static database copies.")
+    parser = argparse.ArgumentParser(description="Download and extract AACT daily database copies.")
     parser.add_argument(
         "--date", 
         help="Date of the dump in YYYY-MM-DD format (default: today)",
