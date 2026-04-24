@@ -6,7 +6,7 @@ from pathlib import Path
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
-# Database configuration
+# Default / Fallback configuration
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'port': int(os.getenv('DB_PORT', 5432)),
@@ -15,7 +15,16 @@ DB_CONFIG = {
     'password': os.getenv('DB_PASSWORD', 'password'),
 }
 
-# ISRCTN Database configuration (Separate from AACT)
+# ClinicalTrials.gov (AACT) Database configuration
+CTGOV_DB_CONFIG = {
+    'host': os.getenv('CTGOV_DB_HOST', os.getenv('DB_HOST', 'localhost')),
+    'port': int(os.getenv('CTGOV_DB_PORT', os.getenv('DB_PORT', 5432))),
+    'database': os.getenv('CTGOV_DB_NAME', 'aact'),
+    'user': os.getenv('CTGOV_DB_USER', os.getenv('DB_USER', 'postgres')),
+    'password': os.getenv('CTGOV_DB_PASSWORD', os.getenv('DB_PASSWORD', 'password')),
+}
+
+# ISRCTN Database configuration
 ISRCTN_DB_CONFIG = {
     'host': os.getenv('ISRCTN_DB_HOST', os.getenv('DB_HOST', 'localhost')),
     'port': int(os.getenv('ISRCTN_DB_PORT', os.getenv('DB_PORT', 5432))),
