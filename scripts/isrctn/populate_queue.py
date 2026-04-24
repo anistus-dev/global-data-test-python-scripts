@@ -56,14 +56,15 @@ def populate_queue(csv_path):
     try:
         for isrctn_id in ids_to_insert:
             try:
+                # Use ON CONFLICT DO NOTHING to handle duplicates gracefully
                 cur.execute(
-                    "INSERT INTO trial_queue (isrctn_id) VALUES (%s)",
+                    "INSERT INTO trial_queue (isrctn_id) VALUES (%s) ON CONFLICT (isrctn_id) DO NOTHING",
                     (isrctn_id,)
                 )
-                processed_count += 1
-            except psycopg2.errors.UniqueViolation:
-                conn.rollback()
-                duplicate_count += 1
+                if cur.rowcount == 1:
+                    processed_count += 1
+                else:
+                    duplicate_count += 1
             except Exception as e:
                 conn.rollback()
                 print(f"Error inserting {isrctn_id}: {e}")
