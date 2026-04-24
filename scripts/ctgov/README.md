@@ -16,6 +16,19 @@ CTGOV_DB_PASSWORD=your_password
 
 ## Tools
 
+### Data Download (`download_aact.py`)
+
+Downloads the latest daily static database copy from the AACT website.
+
+**Usage:**
+```bash
+# Download today's dump
+uv run python -m scripts.ctgov.download_aact
+
+# Download a specific date's dump
+uv run python -m scripts.ctgov.download_aact --date 2026-04-20
+```
+
 ### Database Initialization (`init_db.py`)
 
 This script restores the AACT database from a PostgreSQL custom format dump file (`.dmp`). It uses `pg_restore` under the hood with optimized flags for a clean setup.
