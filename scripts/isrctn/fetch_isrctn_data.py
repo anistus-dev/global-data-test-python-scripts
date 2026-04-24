@@ -59,7 +59,7 @@ def fetch_and_store_trial(isrctn_id, conn):
         xml_data = response.text
         root = ET.fromstring(xml_data)
     except Exception as e:
-        # Silently return error to be handled by main() for clean progress logging
+        # Return simplified error message for logging
         return False, str(e)
 
     cur = conn.cursor()
@@ -445,6 +445,8 @@ def main():
             else:
                 error_count += 1
                 status = 'failed'
+                # Print the error on a new line so it doesn't get overwritten by the next progress update
+                print(f"\n[!] Error fetching {isrctn_id}: {error_msg}")
             
             # Update queue status in DB
             cur.execute("""
