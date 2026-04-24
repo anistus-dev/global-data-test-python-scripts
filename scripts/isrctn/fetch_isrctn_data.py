@@ -52,7 +52,6 @@ def safe_float(val):
 
 def fetch_and_store_trial(isrctn_id, conn):
     url = f"https://www.isrctn.com/api/trial/{isrctn_id}/format/default"
-    print(f"Fetching {isrctn_id}...")
     
     try:
         response = requests.get(url, timeout=30)
@@ -60,7 +59,7 @@ def fetch_and_store_trial(isrctn_id, conn):
         xml_data = response.text
         root = ET.fromstring(xml_data)
     except Exception as e:
-        print(f"Failed to fetch or parse {isrctn_id}: {e}")
+        # Silently return error to be handled by main() for clean progress logging
         return False, str(e)
 
     cur = conn.cursor()
@@ -404,8 +403,6 @@ def fetch_and_store_trial(isrctn_id, conn):
         return True, None
     except Exception as e:
         conn.rollback()
-        traceback.print_exc()
-        print(f"Error processing data for {isrctn_id}: {e}")
         return False, str(e)
     finally:
         cur.close()
@@ -414,18 +411,42 @@ def main():
     conn = get_db_connection()
     cur = conn.cursor()
     try:
+        # Get pending trials
         cur.execute("SELECT isrctn_id FROM trial_queue WHERE retrieval_status = 'pending'")
         trials_to_fetch = [row[0] for row in cur.fetchall()]
+        
         if not trials_to_fetch:
+            # Fallback to retry failed ones if no pending
             cur.execute("SELECT isrctn_id FROM trial_queue WHERE retrieval_status = 'failed'")
             trials_to_fetch = [row[0] for row in cur.fetchall()]
             if not trials_to_fetch:
                 print("No trials in queue to process.")
                 return
-        print(f"Starting retrieval of {len(trials_to_fetch)} trials...")
-        for isrctn_id in trials_to_fetch:
+
+        total = len(trials_to_fetch)
+        success_count = 0
+        error_count = 0
+        
+        print(f"Starting retrieval of {total} trials...")
+        
+        for i, isrctn_id in enumerate(trials_to_fetch, 1):
+            percent = (i / total) * 100
+            remaining = total - i
+            
+            # Print progress line
+            sys.stdout.write(f"\r[{i}/{total}] ({percent:5.1f}%) | [C: {success_count} | E: {error_count} | R: {remaining}] Processing {isrctn_id}...")
+            sys.stdout.flush()
+            
             success, error_msg = fetch_and_store_trial(isrctn_id, conn)
-            status = 'completed' if success else 'failed'
+            
+            if success:
+                success_count += 1
+                status = 'completed'
+            else:
+                error_count += 1
+                status = 'failed'
+            
+            # Update queue status in DB
             cur.execute("""
                 UPDATE trial_queue 
                 SET retrieval_status = %s, 
@@ -434,7 +455,12 @@ def main():
                 WHERE isrctn_id = %s
             """, (status, error_msg, isrctn_id))
             conn.commit()
-        print("Batch processing complete.")
+            
+        print(f"\n\nBatch processing complete!")
+        print(f"Total: {total}")
+        print(f"Successfully processed: {success_count}")
+        print(f"Failed: {error_count}")
+        
     finally:
         cur.close()
         conn.close()
