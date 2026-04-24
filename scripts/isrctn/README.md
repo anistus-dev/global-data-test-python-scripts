@@ -35,6 +35,19 @@ ISRCTN_DB_PASSWORD=your_password
 
 ## 2. Usage Instructions
 
+### Step 0: Download Latest Trial IDs (Optional)
+Automate the retrieval of the latest trial ID list from the ISRCTN website using a headless browser:
+
+```bash
+# One-time setup: install the browser engine and system dependencies
+uv run playwright install chromium
+uv run playwright install-deps chromium
+
+# Download the CSV
+uv run python -m scripts.isrctn.download_csv --out data/isrctn_ids.csv
+```
+This tool uses **Headless Playwright** to bypass advanced JavaScript challenges while remaining completely invisible and suitable for automation flows.
+
 ### Step 1: Initialize Database Schema
 Apply the comprehensive SQL schema to your new database:
 ```bash
