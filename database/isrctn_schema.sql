@@ -37,18 +37,18 @@ CREATE TABLE IF NOT EXISTS trials (
     secondary_study_design TEXT,
     trial_types TEXT,
     overall_end_date DATE,
-    overall_status_override VARCHAR(100), -- New from Master XML
+    overall_status_override VARCHAR(255), -- New from Master XML
     reason_abandoned TEXT, -- New from Master XML
     
     -- Selection Criteria
     inclusion_criteria TEXT,
     exclusion_criteria TEXT,
-    ethics_approval_required VARCHAR(100),
+    ethics_approval_required VARCHAR(255),
     ethics_approval_text TEXT, 
     
     -- Status Overrides (from participants section)
-    rect_start_status_override VARCHAR(100),
-    rect_status_override VARCHAR(100),
+    rect_start_status_override VARCHAR(255),
+    rect_status_override VARCHAR(255),
     
     -- Outcomes (Text Fallback)
     primary_outcome_text TEXT,
@@ -56,10 +56,10 @@ CREATE TABLE IF NOT EXISTS trials (
     
     -- Results & Metadata
     publication_details TEXT,
-    publication_stage VARCHAR(100),
+    publication_stage VARCHAR(255),
     basic_report TEXT,
     plain_english_report TEXT,
-    ipd_sharing_plan VARCHAR(100),
+    ipd_sharing_plan VARCHAR(255),
     ipd_sharing_statement TEXT,
     data_policy TEXT,
     
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS secondary_identifiers (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     internal_id UUID, -- 'id' attribute from XML
-    number_type VARCHAR(100),
+    number_type VARCHAR(255),
     canonical_number VARCHAR(255),
     value TEXT
 );
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS ethics_committees (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     committee_id UUID, -- From XML attribute 'id'
-    approval_status VARCHAR(100),
+    approval_status VARCHAR(255),
     status_date TIMESTAMP WITH TIME ZONE,
     committee_name TEXT,
     address TEXT,
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS ethics_committees (
     state VARCHAR(255),
     country VARCHAR(255),
     zip VARCHAR(50),
-    telephone VARCHAR(100),
+    telephone VARCHAR(255),
     email VARCHAR(255),
     committee_reference TEXT
 );
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS trial_centres (
 CREATE TABLE IF NOT EXISTS recruitment_countries (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
-    country VARCHAR(100)
+    country VARCHAR(255)
 );
 
 -- 9. Medical Details (Conditions & Interventions)
@@ -173,17 +173,17 @@ CREATE TABLE IF NOT EXISTS interventions (
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     description TEXT,
     intervention_type VARCHAR(255),
-    phase VARCHAR(100),
+    phase VARCHAR(255),
     drug_names TEXT
 );
 
 -- 10. Design Details
 CREATE TABLE IF NOT EXISTS interventional_designs (
     isrctn_id VARCHAR(50) PRIMARY KEY REFERENCES trials(isrctn_id) ON DELETE CASCADE,
-    allocation VARCHAR(100),
-    masking VARCHAR(100),
-    control VARCHAR(100),
-    assignment VARCHAR(100)
+    allocation VARCHAR(255),
+    masking VARCHAR(255),
+    control VARCHAR(255),
+    assignment VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS trial_purposes (
@@ -197,8 +197,8 @@ CREATE TABLE IF NOT EXISTS data_outputs (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     output_xml_id UUID,
-    output_type VARCHAR(100),
-    artefact_type VARCHAR(100),
+    output_type VARCHAR(255),
+    artefact_type VARCHAR(255),
     date_created TIMESTAMP WITH TIME ZONE,
     date_uploaded TIMESTAMP WITH TIME ZONE,
     peer_reviewed BOOLEAN,
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS data_outputs (
     file_version VARCHAR(50),
     original_filename TEXT,
     download_filename TEXT,
-    mime_type VARCHAR(100),
+    mime_type VARCHAR(255),
     file_length BIGINT,
     md5sum VARCHAR(50),
     description TEXT,
@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS attached_files (
     description TEXT,
     download_url TEXT,
     is_public BOOLEAN,
-    mime_type VARCHAR(100),
+    mime_type VARCHAR(255),
     file_length BIGINT,
     md5sum VARCHAR(50)
 );
@@ -236,9 +236,9 @@ CREATE TABLE IF NOT EXISTS organizations (
     org_id UUID,
     name TEXT,
     org_role VARCHAR(50), -- 'SPONSOR', 'FUNDER'
-    org_type VARCHAR(100),
-    ror_id VARCHAR(100),
-    commercial_status VARCHAR(100),
+    org_type VARCHAR(255),
+    ror_id VARCHAR(255),
+    commercial_status VARCHAR(255),
     fund_ref TEXT
 );
 
@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     state VARCHAR(255),
     country VARCHAR(255),
     zip VARCHAR(50),
-    telephone VARCHAR(100),
+    telephone VARCHAR(255),
     email VARCHAR(255),
     privacy VARCHAR(50)
 );
@@ -265,7 +265,7 @@ CREATE TABLE IF NOT EXISTS contacts (
 CREATE TABLE IF NOT EXISTS contact_types (
     id SERIAL PRIMARY KEY,
     contact_record_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
-    type_name VARCHAR(100)
+    type_name VARCHAR(255)
 );
 
 -- Indexes
