@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS external_identifiers (
     eudract_number VARCHAR(255),
     iras_number VARCHAR(255),
     clinicaltrials_gov_number VARCHAR(255),
-    protocol_serial_number VARCHAR(255)
+    protocol_serial_number TEXT
 );
 
 CREATE TABLE IF NOT EXISTS secondary_identifiers (
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS ethics_committees (
     city VARCHAR(255),
     state VARCHAR(255),
     country VARCHAR(255),
-    zip VARCHAR(50),
+    zip VARCHAR(255),
     telephone VARCHAR(255),
     email VARCHAR(255),
     committee_reference TEXT
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS trial_centres (
     city VARCHAR(255),
     state VARCHAR(255),
     country VARCHAR(255),
-    zip VARCHAR(50)
+    zip VARCHAR(255)
 );
 
 -- 8. Recruitment Countries
@@ -164,8 +164,8 @@ CREATE TABLE IF NOT EXISTS conditions (
     id SERIAL PRIMARY KEY,
     isrctn_id VARCHAR(50) REFERENCES trials(isrctn_id) ON DELETE CASCADE,
     description TEXT,
-    disease_class1 VARCHAR(255),
-    disease_class2 VARCHAR(255)
+    disease_class1 TEXT,
+    disease_class2 TEXT
 );
 
 CREATE TABLE IF NOT EXISTS interventions (
@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS interventional_designs (
     allocation VARCHAR(255),
     masking VARCHAR(255),
     control VARCHAR(255),
-    assignment VARCHAR(255)
+    assignment TEXT
 );
 
 CREATE TABLE IF NOT EXISTS trial_purposes (
@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     city VARCHAR(255),
     state VARCHAR(255),
     country VARCHAR(255),
-    zip VARCHAR(50),
+    zip VARCHAR(255),
     telephone VARCHAR(255),
     email VARCHAR(255),
     privacy VARCHAR(50)
