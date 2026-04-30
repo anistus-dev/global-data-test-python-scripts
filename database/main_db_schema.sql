@@ -258,10 +258,23 @@ CREATE TABLE scientific.medical_term (
 -- =========================================================
 -- Clinical trial registry master
 -- =========================================================
+
+-- The 'Unified' layer represents the deduplicated 'Global Entity'
+CREATE TABLE clinical.unified_trial (
+  unified_trial_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  unified_trial_code text UNIQUE,                 -- The Global ID (e.g. GDCT0523097)
+  canonical_trial_id uuid,                         -- FK added later to avoid circular dependency
+  is_verified boolean DEFAULT false,
+  internal_notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 CREATE TABLE clinical.trial (
   trial_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  master_trial_code text UNIQUE,                  -- internal ID e.g. GDCT0523097-style
-  primary_registry_id text,                       -- e.g. NCT06439277
+  unified_trial_id uuid REFERENCES clinical.unified_trial(unified_trial_id),
+  source_id uuid NOT NULL REFERENCES ref.source(source_id),
+  primary_registry_id text NOT NULL,              -- e.g. NCT06439277
   title text NOT NULL,
   official_title text,
   acronym text,
@@ -293,30 +306,18 @@ CREATE TABLE clinical.trial (
   conclusion text,
   source_last_updated date,
   last_reviewed_at date,
+  first_seen_at timestamptz DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(source_id, primary_registry_id)
 );
 
-CREATE TABLE clinical.identifier (
+CREATE TABLE clinical.secondary_identifier (
   identifier_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   identifier_value text NOT NULL,
-  identifier_type text NOT NULL,                  -- NCT, ISRCTN, EUCT, sponsor_protocol, internal, other
-  source_id uuid REFERENCES ref.source(source_id),
-  is_primary boolean NOT NULL DEFAULT false,
-  UNIQUE(identifier_value, identifier_type)
-);
-
-CREATE TABLE clinical.source_link (
-  source_link_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
-  source_id uuid NOT NULL REFERENCES ref.source(source_id),
-  source_record_id text NOT NULL,
-  source_url text,
-  source_version text,
-  first_seen_at timestamptz,
-  last_seen_at timestamptz,
-  UNIQUE(source_id, source_record_id)
+  identifier_type text NOT NULL,                  -- sponsor_protocol, WHO, internal, other
+  UNIQUE(trial_id, identifier_value, identifier_type)
 );
 
 CREATE TABLE clinical.trial_indication (
@@ -512,8 +513,7 @@ CREATE TABLE clinical.trial_publication (
 CREATE INDEX idx_trial_primary_registry_id ON clinical.trial(primary_registry_id);
 CREATE INDEX idx_trial_status_phase ON clinical.trial(status, phase);
 CREATE INDEX idx_trial_dates ON clinical.trial(start_date, completion_date);
-CREATE INDEX idx_identifier_value ON clinical.identifier(identifier_value);
-CREATE INDEX idx_source_link_record ON clinical.source_link(source_id, source_record_id);
+CREATE INDEX idx_sec_identifier_value ON clinical.secondary_identifier(identifier_value);
 CREATE INDEX idx_outcome_measure_fts ON clinical.outcome USING gin(to_tsvector('english', coalesce(measure,'') || ' ' || coalesce(description,'')));
 CREATE INDEX idx_criteria_fts ON clinical.eligibility_criterion USING gin(to_tsvector('english', criterion_text));
 CREATE INDEX idx_product_name ON drug.product(normalized_name);
@@ -531,3 +531,8 @@ INSERT INTO ref.source (source_code, source_name, source_url, source_type) VALUE
 ('WHO_ICTRP', 'WHO International Clinical Trials Registry Platform', 'https://trialsearch.who.int', 'registry'),
 ('GLOBALDATA_REF', 'GlobalData reference profile', 'https://www.globaldata.com/', 'vendor')
 ON CONFLICT (source_code) DO NOTHING;
+
+-- Circular reference to point from the Master to the best source record
+ALTER TABLE clinical.unified_trial 
+ADD CONSTRAINT fk_canonical_trial 
+FOREIGN KEY (canonical_trial_id) REFERENCES clinical.trial(trial_id) ON DELETE SET NULL;
