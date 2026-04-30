@@ -17,8 +17,8 @@ CREATE SCHEMA IF NOT EXISTS ingest;
 -- =========================================================
 -- Shared reference / governance
 -- =========================================================
-CREATE TABLE ref.source_system (
-  source_system_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE ref.source (
+  source_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source_code text NOT NULL UNIQUE,               -- CTGOV, ISRCTN, EUCTR, GD_MANUAL, etc.
   source_name text NOT NULL,
   source_url text,
@@ -57,7 +57,7 @@ CREATE TABLE ref.route_of_administration (
 CREATE TABLE audit.etl_batch (
   etl_batch_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   pipeline_name text NOT NULL,
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
+  source_id uuid REFERENCES ref.source(source_id),
   source_file_name text,
   source_file_hash text,
   started_at timestamptz NOT NULL DEFAULT now(),
@@ -72,27 +72,27 @@ CREATE TABLE audit.record_lineage (
   entity_schema text NOT NULL,
   entity_table text NOT NULL,
   entity_id uuid NOT NULL,
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
+  source_id uuid REFERENCES ref.source(source_id),
   source_record_id text,
   source_url text,
   etl_batch_id uuid REFERENCES audit.etl_batch(etl_batch_id),
   source_payload jsonb,
   extracted_at timestamptz,
   loaded_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(entity_schema, entity_table, entity_id, source_system_id, source_record_id)
+  UNIQUE(entity_schema, entity_table, entity_id, source_id, source_record_id)
 );
 
 -- Raw landing table for current MVP sources / future data lake feeds
-CREATE TABLE ingest.raw_registry_record (
+CREATE TABLE ingest.raw_record (
   raw_record_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_system_id uuid NOT NULL REFERENCES ref.source_system(source_system_id),
+  source_id uuid NOT NULL REFERENCES ref.source(source_id),
   source_record_id text NOT NULL,
   source_url text,
   payload jsonb NOT NULL,
   payload_hash text NOT NULL,
   etl_batch_id uuid REFERENCES audit.etl_batch(etl_batch_id),
   ingested_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(source_system_id, source_record_id, payload_hash)
+  UNIQUE(source_id, source_record_id, payload_hash)
 );
 
 -- =========================================================
@@ -129,14 +129,14 @@ CREATE TABLE company.news_article (
   summary text,
   body text,
   published_at timestamptz,
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
+  source_id uuid REFERENCES ref.source(source_id),
   source_name text,
   source_url text UNIQUE,
   language_code text DEFAULT 'en',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE company.news_company_link (
+CREATE TABLE company.news_organization (
   news_article_id uuid REFERENCES company.news_article(news_article_id) ON DELETE CASCADE,
   organization_id uuid REFERENCES company.organization(organization_id) ON DELETE CASCADE,
   PRIMARY KEY(news_article_id, organization_id)
@@ -145,8 +145,8 @@ CREATE TABLE company.news_company_link (
 -- =========================================================
 -- Drug / pipeline data
 -- =========================================================
-CREATE TABLE drug.drug_product (
-  drug_product_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE drug.product (
+  product_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   drug_name text NOT NULL,
   generic_name text,
   brand_name text,
@@ -159,13 +159,13 @@ CREATE TABLE drug.drug_product (
   UNIQUE(normalized_name, development_status)
 );
 
-CREATE TABLE drug.drug_alias (
-  drug_alias_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  drug_product_id uuid NOT NULL REFERENCES drug.drug_product(drug_product_id) ON DELETE CASCADE,
+CREATE TABLE drug.alias (
+  alias_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL REFERENCES drug.product(product_id) ON DELETE CASCADE,
   alias_name text NOT NULL,
   alias_type text,                                -- brand, generic, code, INN, synonym
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
-  UNIQUE(drug_product_id, alias_name)
+  source_id uuid REFERENCES ref.source(source_id),
+  UNIQUE(product_id, alias_name)
 );
 
 CREATE TABLE drug.target (
@@ -177,40 +177,41 @@ CREATE TABLE drug.target (
   UNIQUE(target_name, official_symbol)
 );
 
-CREATE TABLE drug.mechanism_of_action (
+CREATE TABLE drug.moa (
   moa_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   moa_name text NOT NULL UNIQUE,
   description text
 );
 
-CREATE TABLE drug.drug_target (
-  drug_product_id uuid REFERENCES drug.drug_product(drug_product_id) ON DELETE CASCADE,
+CREATE TABLE drug.product_target (
+  product_id uuid REFERENCES drug.product(product_id) ON DELETE CASCADE,
   target_id uuid REFERENCES drug.target(target_id) ON DELETE CASCADE,
   relationship_type text DEFAULT 'acts_on',
-  PRIMARY KEY(drug_product_id, target_id)
+  PRIMARY KEY(product_id, target_id)
 );
 
-CREATE TABLE drug.drug_moa (
-  drug_product_id uuid REFERENCES drug.drug_product(drug_product_id) ON DELETE CASCADE,
-  moa_id uuid REFERENCES drug.mechanism_of_action(moa_id) ON DELETE CASCADE,
-  PRIMARY KEY(drug_product_id, moa_id)
+CREATE TABLE drug.product_moa (
+  product_id uuid REFERENCES drug.product(product_id) ON DELETE CASCADE,
+  moa_id uuid REFERENCES drug.moa(moa_id) ON DELETE CASCADE,
+  PRIMARY KEY(product_id, moa_id)
 );
 
 CREATE TABLE drug.atc_classification (
-  atc_code text PRIMARY KEY,
+  atc_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  atc_code text NOT NULL UNIQUE,
   atc_name text NOT NULL,
   level_no int
 );
 
-CREATE TABLE drug.drug_atc (
-  drug_product_id uuid REFERENCES drug.drug_product(drug_product_id) ON DELETE CASCADE,
-  atc_code text REFERENCES drug.atc_classification(atc_code),
-  PRIMARY KEY(drug_product_id, atc_code)
+CREATE TABLE drug.product_atc (
+  product_id uuid REFERENCES drug.product(product_id) ON DELETE CASCADE,
+  atc_id uuid REFERENCES drug.atc_classification(atc_id),
+  PRIMARY KEY(product_id, atc_id)
 );
 
 CREATE TABLE drug.pipeline_event (
   pipeline_event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  drug_product_id uuid REFERENCES drug.drug_product(drug_product_id),
+  product_id uuid REFERENCES drug.product(product_id),
   indication_id uuid REFERENCES ref.indication(indication_id),
   phase text,
   status text,
@@ -301,7 +302,7 @@ CREATE TABLE clinical.identifier (
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   identifier_value text NOT NULL,
   identifier_type text NOT NULL,                  -- NCT, ISRCTN, EUCT, sponsor_protocol, internal, other
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
+  source_id uuid REFERENCES ref.source(source_id),
   is_primary boolean NOT NULL DEFAULT false,
   UNIQUE(identifier_value, identifier_type)
 );
@@ -309,13 +310,13 @@ CREATE TABLE clinical.identifier (
 CREATE TABLE clinical.source_link (
   source_link_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
-  source_system_id uuid NOT NULL REFERENCES ref.source_system(source_system_id),
+  source_id uuid NOT NULL REFERENCES ref.source(source_id),
   source_record_id text NOT NULL,
   source_url text,
   source_version text,
   first_seen_at timestamptz,
   last_seen_at timestamptz,
-  UNIQUE(source_system_id, source_record_id)
+  UNIQUE(source_id, source_record_id)
 );
 
 CREATE TABLE clinical.trial_indication (
@@ -361,7 +362,7 @@ CREATE TABLE clinical.arm (
 CREATE TABLE clinical.intervention (
   intervention_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
-  drug_product_id uuid REFERENCES drug.drug_product(drug_product_id),
+  product_id uuid REFERENCES drug.product(product_id),
   intervention_name text NOT NULL,
   intervention_type text,                         -- Drug, Biological, Device, Procedure, Placebo
   is_primary boolean DEFAULT false,
@@ -468,7 +469,7 @@ CREATE TABLE clinical.event (
   event_date date,
   event_type text,
   event_brief text,
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
+  source_id uuid REFERENCES ref.source(source_id),
   source_url text
 );
 
@@ -483,7 +484,7 @@ CREATE TABLE clinical.change_history (
   source_date date,
   source_type text,
   source_url text,
-  source_system_id uuid REFERENCES ref.source_system(source_system_id),
+  source_id uuid REFERENCES ref.source(source_id),
   raw_change jsonb
 );
 
@@ -495,7 +496,7 @@ CREATE TABLE clinical.cost_estimate (
   component_name text,
   cost_usd_millions numeric(14,4),
   assumption_text text,
-  source_system_id uuid REFERENCES ref.source_system(source_system_id)
+  source_id uuid REFERENCES ref.source(source_id)
 );
 
 CREATE TABLE clinical.trial_publication (
@@ -512,17 +513,17 @@ CREATE INDEX idx_trial_primary_registry_id ON clinical.trial(primary_registry_id
 CREATE INDEX idx_trial_status_phase ON clinical.trial(status, phase);
 CREATE INDEX idx_trial_dates ON clinical.trial(start_date, completion_date);
 CREATE INDEX idx_identifier_value ON clinical.identifier(identifier_value);
-CREATE INDEX idx_source_link_record ON clinical.source_link(source_system_id, source_record_id);
+CREATE INDEX idx_source_link_record ON clinical.source_link(source_id, source_record_id);
 CREATE INDEX idx_outcome_measure_fts ON clinical.outcome USING gin(to_tsvector('english', coalesce(measure,'') || ' ' || coalesce(description,'')));
 CREATE INDEX idx_criteria_fts ON clinical.eligibility_criterion USING gin(to_tsvector('english', criterion_text));
-CREATE INDEX idx_drug_name ON drug.drug_product(normalized_name);
+CREATE INDEX idx_product_name ON drug.product(normalized_name);
 CREATE INDEX idx_org_name ON company.organization(normalized_name);
 CREATE INDEX idx_site_country ON clinical.site(country_id, state_province, city);
-CREATE INDEX idx_raw_payload_gin ON ingest.raw_registry_record USING gin(payload jsonb_path_ops);
+CREATE INDEX idx_raw_payload_gin ON ingest.raw_record USING gin(payload jsonb_path_ops);
 CREATE INDEX idx_change_history_date ON clinical.change_history(trial_id, modified_date DESC);
 
 -- Basic source seeds
-INSERT INTO ref.source_system (source_code, source_name, source_url, source_type) VALUES
+INSERT INTO ref.source (source_code, source_name, source_url, source_type) VALUES
 ('CTGOV', 'ClinicalTrials.gov', 'https://clinicaltrials.gov', 'registry'),
 ('ISRCTN', 'ISRCTN registry', 'https://www.isrctn.com', 'registry'),
 ('EUCTR', 'European Clinical Trials Information System', 'https://euclinicaltrials.eu', 'registry'),
