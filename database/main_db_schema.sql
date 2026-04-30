@@ -296,8 +296,8 @@ CREATE TABLE clinical.trial (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE clinical.trial_identifier (
-  trial_identifier_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.identifier (
+  identifier_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   identifier_value text NOT NULL,
   identifier_type text NOT NULL,                  -- NCT, ISRCTN, EUCT, sponsor_protocol, internal, other
@@ -306,8 +306,8 @@ CREATE TABLE clinical.trial_identifier (
   UNIQUE(identifier_value, identifier_type)
 );
 
-CREATE TABLE clinical.trial_source_link (
-  trial_source_link_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.source_link (
+  source_link_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   source_system_id uuid NOT NULL REFERENCES ref.source_system(source_system_id),
   source_record_id text NOT NULL,
@@ -333,22 +333,22 @@ CREATE TABLE clinical.trial_sponsor (
   PRIMARY KEY(trial_id, organization_id, sponsor_role)
 );
 
-CREATE TABLE clinical.trial_design_attribute (
-  trial_design_attribute_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.design_attribute (
+  design_attribute_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   attribute_type text NOT NULL,                   -- allocation, intervention_model, masking, primary_purpose, geography, objective
   attribute_value text NOT NULL,
   UNIQUE(trial_id, attribute_type, attribute_value)
 );
 
-CREATE TABLE clinical.trial_virtual_component (
+CREATE TABLE clinical.virtual_component (
   trial_id uuid REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   component_name text NOT NULL,                   -- eCOA, eCRF, Telemedicine, Electronic Data Capture
   PRIMARY KEY(trial_id, component_name)
 );
 
-CREATE TABLE clinical.trial_arm (
-  trial_arm_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.arm (
+  arm_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   arm_code text,
   arm_title text,
@@ -358,8 +358,8 @@ CREATE TABLE clinical.trial_arm (
   UNIQUE(trial_id, arm_code)
 );
 
-CREATE TABLE clinical.trial_intervention (
-  trial_intervention_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.intervention (
+  intervention_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   drug_product_id uuid REFERENCES drug.drug_product(drug_product_id),
   intervention_name text NOT NULL,
@@ -371,14 +371,14 @@ CREATE TABLE clinical.trial_intervention (
   UNIQUE(trial_id, intervention_name, intervention_type)
 );
 
-CREATE TABLE clinical.trial_arm_intervention (
-  trial_arm_id uuid REFERENCES clinical.trial_arm(trial_arm_id) ON DELETE CASCADE,
-  trial_intervention_id uuid REFERENCES clinical.trial_intervention(trial_intervention_id) ON DELETE CASCADE,
-  PRIMARY KEY(trial_arm_id, trial_intervention_id)
+CREATE TABLE clinical.arm_intervention (
+  arm_id uuid REFERENCES clinical.arm(arm_id) ON DELETE CASCADE,
+  intervention_id uuid REFERENCES clinical.intervention(intervention_id) ON DELETE CASCADE,
+  PRIMARY KEY(arm_id, intervention_id)
 );
 
-CREATE TABLE clinical.trial_outcome (
-  trial_outcome_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.outcome (
+  outcome_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   outcome_type text NOT NULL,                     -- primary, secondary, other
   measure text NOT NULL,
@@ -388,13 +388,13 @@ CREATE TABLE clinical.trial_outcome (
   UNIQUE(trial_id, outcome_type, measure)
 );
 
-CREATE TABLE clinical.trial_endpoint_classification (
+CREATE TABLE clinical.endpoint_classification (
   trial_id uuid REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   classification text NOT NULL,                   -- Efficacy, Safety, Pharmacokinetics
   PRIMARY KEY(trial_id, classification)
 );
 
-CREATE TABLE clinical.trial_eligibility_criterion (
+CREATE TABLE clinical.eligibility_criterion (
   criterion_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   criterion_type text NOT NULL,                   -- inclusion, exclusion
@@ -402,7 +402,7 @@ CREATE TABLE clinical.trial_eligibility_criterion (
   sequence_no int
 );
 
-CREATE TABLE clinical.trial_subject_tag (
+CREATE TABLE clinical.subject_tag (
   trial_id uuid REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   subject_tag text NOT NULL,                      -- Adolescents, Prediabetic, Hypertension, etc.
   PRIMARY KEY(trial_id, subject_tag)
@@ -450,8 +450,8 @@ CREATE TABLE clinical.trial_investigator (
   UNIQUE(trial_id, person_id, role)
 );
 
-CREATE TABLE clinical.trial_contact (
-  trial_contact_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.contact (
+  contact_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   contact_name text,
   phone text,
@@ -462,8 +462,8 @@ CREATE TABLE clinical.trial_contact (
   region text
 );
 
-CREATE TABLE clinical.trial_event (
-  trial_event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.event (
+  event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   event_date date,
   event_type text,
@@ -472,7 +472,7 @@ CREATE TABLE clinical.trial_event (
   source_url text
 );
 
-CREATE TABLE clinical.trial_change_history (
+CREATE TABLE clinical.change_history (
   change_history_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   modified_date date,
@@ -487,8 +487,8 @@ CREATE TABLE clinical.trial_change_history (
   raw_change jsonb
 );
 
-CREATE TABLE clinical.trial_cost_estimate (
-  trial_cost_estimate_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE clinical.cost_estimate (
+  cost_estimate_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trial_id uuid NOT NULL REFERENCES clinical.trial(trial_id) ON DELETE CASCADE,
   cost_category text,
   cost_year int,
@@ -511,15 +511,15 @@ CREATE TABLE clinical.trial_publication (
 CREATE INDEX idx_trial_primary_registry_id ON clinical.trial(primary_registry_id);
 CREATE INDEX idx_trial_status_phase ON clinical.trial(status, phase);
 CREATE INDEX idx_trial_dates ON clinical.trial(start_date, completion_date);
-CREATE INDEX idx_trial_identifier_value ON clinical.trial_identifier(identifier_value);
-CREATE INDEX idx_trial_source_source_record ON clinical.trial_source_link(source_system_id, source_record_id);
-CREATE INDEX idx_trial_outcome_measure_fts ON clinical.trial_outcome USING gin(to_tsvector('english', coalesce(measure,'') || ' ' || coalesce(description,'')));
-CREATE INDEX idx_trial_criteria_fts ON clinical.trial_eligibility_criterion USING gin(to_tsvector('english', criterion_text));
+CREATE INDEX idx_identifier_value ON clinical.identifier(identifier_value);
+CREATE INDEX idx_source_link_record ON clinical.source_link(source_system_id, source_record_id);
+CREATE INDEX idx_outcome_measure_fts ON clinical.outcome USING gin(to_tsvector('english', coalesce(measure,'') || ' ' || coalesce(description,'')));
+CREATE INDEX idx_criteria_fts ON clinical.eligibility_criterion USING gin(to_tsvector('english', criterion_text));
 CREATE INDEX idx_drug_name ON drug.drug_product(normalized_name);
 CREATE INDEX idx_org_name ON company.organization(normalized_name);
 CREATE INDEX idx_site_country ON clinical.site(country_id, state_province, city);
 CREATE INDEX idx_raw_payload_gin ON ingest.raw_registry_record USING gin(payload jsonb_path_ops);
-CREATE INDEX idx_change_history_trial_date ON clinical.trial_change_history(trial_id, modified_date DESC);
+CREATE INDEX idx_change_history_date ON clinical.change_history(trial_id, modified_date DESC);
 
 -- Basic source seeds
 INSERT INTO ref.source_system (source_code, source_name, source_url, source_type) VALUES
