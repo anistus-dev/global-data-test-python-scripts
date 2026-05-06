@@ -76,6 +76,34 @@ def fetch_unified_data(cur, nct_id):
             JOIN clinical.outcome o ON o.outcome_id = oa.outcome_id WHERE o.trial_id = %s
         """, [trial_id]),
         'adverse_events': ("SELECT * FROM clinical.adverse_event WHERE trial_id = %s", [trial_id]),
+        
+        # --- Lookups ---
+        'organizations': ("""
+            SELECT DISTINCT o.* FROM company.organization o
+            LEFT JOIN clinical.trial_sponsor ts ON ts.organization_id = o.organization_id
+            LEFT JOIN clinical.trial_investigator ti ON ti.organization_id = o.organization_id
+            WHERE ts.trial_id = %s OR ti.trial_id = %s
+        """, [trial_id, trial_id]),
+        'persons': ("""
+            SELECT DISTINCT p.* FROM company.person p
+            JOIN clinical.trial_investigator ti ON ti.person_id = p.person_id
+            WHERE ti.trial_id = %s
+        """, [trial_id]),
+        'indications': ("""
+            SELECT DISTINCT i.* FROM ref.indication i
+            JOIN clinical.trial_indication ti ON ti.indication_id = i.indication_id
+            WHERE ti.trial_id = %s
+        """, [trial_id]),
+        'sites': ("""
+            SELECT DISTINCT s.* FROM clinical.site s
+            JOIN clinical.trial_site ts ON ts.site_id = s.site_id
+            WHERE ts.trial_id = %s
+        """, [trial_id]),
+        'publications': ("""
+            SELECT DISTINCT p.* FROM scientific.publication p
+            JOIN clinical.trial_publication tp ON tp.publication_id = p.publication_id
+            WHERE tp.trial_id = %s
+        """, [trial_id])
     }
     
     data = {}
@@ -152,6 +180,32 @@ def main():
             total_aact_outcomes = len(aact_data.get('design_outcomes', [])) + len(aact_data.get('result_outcomes', []))
             uni_outcomes = len(unified_data.get('outcomes', []))
             f.write(f"{'outcomes (design+result)'} ({total_aact_outcomes})".ljust(45) + f" | outcomes ({uni_outcomes})\n")
+            
+            f.write("\n--- 1B. LOOKUP RECORD COUNTS COMPARISON ---\n")
+            f.write("Note: AACT source counts are the unique text strings extracted from child tables.\n")
+            f.write("-" * 93 + "\n")
+            
+            aact_orgs = set()
+            for sp in aact_data.get('sponsors', []):
+                if sp.get('name'): aact_orgs.add(sp['name'].strip())
+            for off in aact_data.get('officials', []):
+                if off.get('affiliation'): aact_orgs.add(off['affiliation'].strip())
+                
+            aact_persons = set(off['name'].strip() for off in aact_data.get('officials', []) if off.get('name'))
+            aact_inds = set(c['name'].strip() for c in aact_data.get('conditions', []) if c.get('name'))
+            aact_sites = set((f.get('name'), f.get('city'), f.get('state'), f.get('zip')) for f in aact_data.get('facilities', []) if f.get('name'))
+            aact_pubs = set(r['pmid'] for r in aact_data.get('references', []) if r.get('pmid'))
+            
+            lookup_comparisons = [
+                ('unique sponsors/affiliations', len(aact_orgs), 'organizations', len(unified_data.get('organizations', []))),
+                ('unique official names', len(aact_persons), 'persons', len(unified_data.get('persons', []))),
+                ('unique condition names', len(aact_inds), 'indications', len(unified_data.get('indications', []))),
+                ('unique facility details', len(aact_sites), 'sites', len(unified_data.get('sites', []))),
+                ('unique reference pmids', len(aact_pubs), 'publications', len(unified_data.get('publications', [])))
+            ]
+            
+            for a_name, a_count, u_name, u_count in lookup_comparisons:
+                f.write(f"{a_name} ({a_count})".ljust(45) + f" | {u_name} ({u_count})\n")
             
             f.write("\n\n--- 2. RAW UNIFIED DATA DUMP (JSON) ---\n")
             f.write("This section contains the exact rows extracted from the unified clinical database.\n")
