@@ -435,7 +435,8 @@ def load_interventions_bulk(cur, trial_map, interventions_dict):
     values = []
     for nct, trial_id in trial_map.items():
         for i in interventions_dict.get(nct, []):
-            values.append((trial_id, i['name'], i['intervention_type'], i['description'], i['id']))
+            int_name = i['name'].strip() if i.get('name') and i['name'].strip() else 'SERVERGENERATED: Unnamed Intervention'
+            values.append((trial_id, int_name, i['intervention_type'], i['description'], i['id']))
             
     if not values:
         return {}
@@ -485,7 +486,8 @@ def load_outcomes_bulk(cur, trial_map, outcomes_dict):
         seq = 0
         for o in outcomes_dict.get(nct, []):
             seq += 1
-            values.append((trial_id, o['outcome_type'], o['measure'], o['time_frame'], o['description'], seq))
+            measure = o['measure'].strip() if o.get('measure') and o['measure'].strip() else 'SERVERGENERATED: Unnamed Outcome'
+            values.append((trial_id, o['outcome_type'], measure, o['time_frame'], o['description'], seq))
     if values:
         execute_values(cur, """
             INSERT INTO clinical.outcome (trial_id, outcome_type, measure, time_frame, description, sequence_no)
@@ -687,7 +689,8 @@ def load_results_bulk(cur, trial_map, child_data):
     outcome_values = []
     for nct, trial_id in trial_map.items():
         for o in child_data['result_outcomes'].get(nct, []):
-            outcome_values.append((trial_id, o['outcome_type'], o['title'], o['time_frame'], o['description'], None, o['id']))
+            measure = o['title'].strip() if o.get('title') and o['title'].strip() else 'SERVERGENERATED: Unnamed Outcome'
+            outcome_values.append((trial_id, o['outcome_type'], measure, o['time_frame'], o['description'], None, o['id']))
             
     outcome_map = {}
     if outcome_values:
